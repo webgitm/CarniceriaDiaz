@@ -1,1 +1,71 @@
 
+ const NUMERO_SUCURSAL = 1;
+  const SUPABASE_URL = "https://zdanmnlrocpvtxdtikxf.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_KmXHgEwNfw25JuL_tKaL3w_XMXs7r-Q";
+  let supabaseClient = null;
+  try {
+    if (window.supabase) {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+  } catch (err) {
+    console.warn("Supabase init error:", err);
+  }
+
+  async function verificarConexionSupabase() {
+    if (!supabaseClient) {
+      mostrarNotificacion("Supabase no está inicializado", "error");
+      return false;
+    }
+    try {
+      const { error } = await supabaseClient.from("productos").select("id").limit(1);
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("Supabase no responde o RLS bloquea la lectura:", e);
+      mostrarNotificacion("No hay acceso a Supabase. Revisá URL, clave y RLS.", "error");
+      return false;
+    }
+  }
+
+  // ===== Conexión real con la base de datos (Supabase) =====
+  let idSucursalActual = null;      // FK real hacia public.sucursales.id
+  let nombreSucursalActual = "";   // Nombre de la sucursal seleccionada
+  let idCajaActual = null;          // FK real hacia public.caja.id_caja (caja abierta en curso)
+  let idProductoManualId = null;    // producto "genérico" usado para ítems manuales (no están en public.productos)
+
+  // Carga EXACTAMENTE la sucursal indicada en NUMERO_SUCURSAL.
+  // De esta forma el mismo HTML se puede copiar a otra PC/sucursal y
+  // solo hay que cambiar NUMERO_SUCURSAL arriba.
+  async function cargarSucursal() {
+    if (!supabaseClient) return false;
+
+    const numero = Number(NUMERO_SUCURSAL);
+    if (!Number.isInteger(numero) || numero <= 0) {
+      idSucursalActual = null;
+      mostrarNotificacion("NUMERO_SUCURSAL debe ser un número entero mayor a 0", "error");
+      return false;
+    }
+
+    try {
+      const { data, error } = await supabaseClient
+        .from("sucursales")
+        .select("id, nombre, activa")
+        .eq("id", numero)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        idSucursalActual = null;
+        nombreSucursalActual = "";
+        mostrarNotificacion(`No existe la sucursal #${numero} en Supabase`, "error");
+        console.error(`No existe public.sucursales.id = ${numero}`);
+        return false;
+      }
+
+      if (data.activa === false) {
+        idSucursalActual = null;
+        nombreSucursalActual = "";
+        mostrarNotificacion(`La sucursal #${numero} está inactiva`, "warning");
+        return false;
+      }
